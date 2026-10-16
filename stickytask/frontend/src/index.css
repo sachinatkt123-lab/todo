@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Sticky note palette + subtle paper texture via gradient */
+.note {
+  @apply rounded-md p-3 text-sm shadow-md transition-transform;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 60%);
+}
