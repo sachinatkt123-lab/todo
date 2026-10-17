@@ -1,4 +1,4 @@
-// Minimal typed-ish wrapper around the REST API.
+// Minimal fetch wrapper for the REST API.
 const BASE = import.meta.env.VITE_API_URL || '';
 
 async function request(path, options = {}) {
@@ -28,11 +28,9 @@ export const api = {
 
   getTask: (id) => request(`/tasks/${id}`),
 
-  createTask: (task) =>
-    request('/tasks', { method: 'POST', body: JSON.stringify(task) }),
+  createTask: (task) => request('/tasks', { method: 'POST', body: JSON.stringify(task) }),
 
-  updateTask: (id, patch) =>
-    request(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+  updateTask: (id, patch) => request(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
 
   deleteTask: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),
 
@@ -42,4 +40,10 @@ export const api = {
   parse: (text) => request('/tasks/parse', { method: 'POST', body: JSON.stringify({ text }) }),
 
   digest: () => request('/tasks/digest', { method: 'POST' }),
+
+  // Conversational AI assistant (server-side keys only — never in the browser)
+  assistantStatus: () => request('/assistant/status'),
+
+  assistantChat: (message, confirm = false) =>
+    request('/assistant/chat', { method: 'POST', body: JSON.stringify({ message, confirm }) }),
 };

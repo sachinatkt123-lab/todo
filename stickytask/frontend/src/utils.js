@@ -65,3 +65,16 @@ export function isOverdue(task, now = new Date()) {
   const due = new Date(`${task.due_date}T${task.due_time || '23:59'}`);
   return due < now;
 }
+
+// Solid priority dots for the clean list view (high/medium/low → red/amber/slate).
+export const PRIORITY_DOT = {
+  high: 'bg-red-500',
+  medium: 'bg-amber-400',
+  low: 'bg-slate-300',
+};
+
+// Local calendar date as YYYY-MM-DD (matches Postgres DATE strings).
+export function isoToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
