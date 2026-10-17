@@ -51,16 +51,22 @@ function TopCommandBar() {
     toggleSidebar,
     toggleTerminal,
     setQuickSwitcherOpen,
+    setCommandPaletteOpen,
     setCanvasViewMode,
     addSystemLog,
   } = useWorkspace();
 
   const handleQuickJump = () => {
+    // Step 5: never stack modals — close the palette before opening switcher.
+    setCommandPaletteOpen(false);
     setQuickSwitcherOpen(true);
     addSystemLog('USR', 'Quick Jump palette requested from command bar');
   };
 
   const handleComposer = () => {
+    // Step 5: the Composer button now opens the real Omni Command Palette.
+    setQuickSwitcherOpen(false);
+    setCommandPaletteOpen(true);
     addSystemLog('AGENT', 'Omni-Agent Composer invoked — awaiting prompt routing');
   };
 

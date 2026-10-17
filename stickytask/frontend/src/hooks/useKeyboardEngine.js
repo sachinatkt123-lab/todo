@@ -91,15 +91,27 @@ export function useKeyboardEngine() {
             triggerKeyFeedback('Cmd+J', 'Toggle Terminal');
             return;
           case 'k':
+            // Step 5: Cmd+K toggles the palette and never stacks with the
+            // Quick Switcher — opening one closes the other.
             e.preventDefault();
             e.stopPropagation();
-            setCommandPaletteOpen(!commandPaletteOpen);
+            if (commandPaletteOpen) {
+              setCommandPaletteOpen(false);
+            } else {
+              setQuickSwitcherOpen(false);
+              setCommandPaletteOpen(true);
+            }
             triggerKeyFeedback('Cmd+K', 'Omni Composer');
             return;
           case 'p':
             e.preventDefault();
             e.stopPropagation();
-            setQuickSwitcherOpen(!quickSwitcherOpen);
+            if (quickSwitcherOpen) {
+              setQuickSwitcherOpen(false);
+            } else {
+              setCommandPaletteOpen(false);
+              setQuickSwitcherOpen(true);
+            }
             triggerKeyFeedback('Cmd+P', 'Quick Jump');
             return;
           default:
@@ -175,6 +187,10 @@ export function useKeyboardEngine() {
       // keys (Esc handled above).
       if (trapOpen) return;
 
+      // Step 4: in doc view, most stream-only keys stay dormant so users can
+      // write naturally; only Esc (above), d and ? remain active here.
+      const inDoc = canvasViewMode === 'doc';
+
       switch (e.key) {
         case 'j':
         case 'ArrowDown':
@@ -189,6 +205,7 @@ export function useKeyboardEngine() {
           triggerKeyFeedback(e.key === 'k' ? 'k' : '↑', 'Previous Task');
           return;
         case 'x':
+          if (inDoc) return; // dormant inside the spec editor
           e.preventDefault();
           toggleFocusedTaskDone();
           triggerKeyFeedback('x', 'Toggle Done');
@@ -197,8 +214,10 @@ export function useKeyboardEngine() {
           e.preventDefault();
           if (canvasViewMode === 'stream') {
             setCanvasViewMode('doc');
+          } else if (inDoc) {
+            setCanvasViewMode('stream'); // Enter toggles back from doc
           }
-          triggerKeyFeedback('Enter', 'Open Spec Doc');
+          triggerKeyFeedback('Enter', canvasViewMode === 'stream' ? 'Open Spec Doc' : 'Return to Stream');
           return;
         case 'd':
           e.preventDefault();
@@ -207,6 +226,7 @@ export function useKeyboardEngine() {
           return;
         // ---- Step 3: stream power shortcuts ------------------------------
         case 'c':
+          if (inDoc) return;
           e.preventDefault();
           setIsCreatingTask(true);
           triggerKeyFeedback('c', 'New Inline Task');
@@ -222,11 +242,13 @@ export function useKeyboardEngine() {
           }
           return;
         case 's':
+          if (inDoc) return;
           e.preventDefault();
           cycleFocusedTaskStatus();
           triggerKeyFeedback('s', 'Cycle Status');
           return;
         case 'r':
+          if (inDoc) return;
           e.preventDefault();
           triggerAgentOnTask(activeTaskIdRef.current);
           triggerKeyFeedback('r', 'Run AI Agent');
@@ -235,6 +257,7 @@ export function useKeyboardEngine() {
         case '2':
         case '3':
         case '4': {
+          if (inDoc) return;
           e.preventDefault();
           const priority = `P${Number(e.key) - 1}`;
           const focused = filteredTasksRef.current[focusedTaskIndexRef.current];

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import TaskStreamView from '../canvas/TaskStreamView';
+import TaskDocCanvas from '../canvas/TaskDocCanvas';
 import TaskPreviewCard from '../canvas/TaskPreviewCard';
 
 const MODE_CYCLE = ['stream', 'doc', 'diff'];
@@ -87,7 +88,12 @@ function CenterCanvas() {
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {canvasViewMode === 'stream' ? (
           <TaskStreamView />
+        ) : canvasViewMode === 'doc' ? (
+          // Step 4 — Document Spec Canvas renders full-bleed (it owns its own
+          // sticky nav bar, scrollable doc body and slash command dock).
+          <TaskDocCanvas />
         ) : (
+          // Phase 2 — AI Diff Viewer lands here; keep the metadata preview card.
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
             <TaskPreviewCard mode={canvasViewMode} />
           </div>

@@ -35,6 +35,18 @@ const SHORTCUT_GROUPS = [
       { keys: ['?'], label: 'Toggle This Keyboard Map' },
     ],
   },
+  {
+    title: 'Spec Doc Editor',
+    items: [
+      { keys: ['/'], label: 'Slash Menu — /checklist · /criteria · /decompose · /code · /diff' },
+      { keys: ['↑', '↓', 'Enter'], label: 'Navigate & run slash commands' },
+      { keys: ['Enter'], label: 'In checklist row → new step below' },
+      { keys: ['Tab'], label: 'Indent checklist step in' },
+      { keys: ['Shift', 'Tab'], label: 'Outdent checklist step' },
+      { keys: ['Backspace'], label: 'On empty step → delete it' },
+      { keys: ['Esc'], label: 'Leave Doc/Diff view → return to Stream' },
+    ],
+  },
 ];
 
 function KeyBadge({ children }) {

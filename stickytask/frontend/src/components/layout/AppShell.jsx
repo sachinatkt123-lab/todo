@@ -5,6 +5,8 @@ import CenterCanvas from './CenterCanvas';
 import StatusBar from './StatusBar';
 import RightTerminal from '../terminal/RightTerminal';
 import ShortcutHelpModal from '../modals/ShortcutHelpModal';
+import OmniCommandPalette from '../modals/OmniCommandPalette';
+import QuickSwitcherModal from '../modals/QuickSwitcherModal';
 import { useKeyboardEngine } from '../../hooks/useKeyboardEngine';
 
 function AppShell() {
@@ -20,6 +22,10 @@ function AppShell() {
         <RightTerminal />
       </div>
       <StatusBar />
+      {/* Step 5 — modal overlays share one z-layer; the keyboard engine
+          guarantees palette & switcher never stack simultaneously. */}
+      <OmniCommandPalette />
+      <QuickSwitcherModal />
       <ShortcutHelpModal />
     </div>
   );
