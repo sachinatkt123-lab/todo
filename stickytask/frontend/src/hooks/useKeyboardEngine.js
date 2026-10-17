@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useWorkspace } from '../context/WorkspaceContext';
 
 /**
@@ -39,18 +39,40 @@ export function useKeyboardEngine() {
     toggleFocusedTaskDone,
     triggerKeyFeedback,
     addSystemLog,
+    setIsCreatingTask,
+    setEditingTaskId,
+    updateTaskPriority,
+    cycleFocusedTaskStatus,
+    triggerAgentOnTask,
     canvasViewMode,
     commandPaletteOpen,
     quickSwitcherOpen,
     shortcutHelpOpen,
+    isCreatingTask,
+    editingTaskId,
     sidebarOpen,
     terminalOpen,
+    filteredTasks,
+    focusedTaskIndex,
+    activeTaskId,
   } = useWorkspace();
+
+  // Refs so the key handler always reads the freshest values without re-binding.
+  const filteredTasksRef = useRef([]);
+  const focusedTaskIndexRef = useRef(0);
+  const activeTaskIdRef = useRef(null);
+  filteredTasksRef.current = filteredTasks;
+  focusedTaskIndexRef.current = focusedTaskIndex;
+  activeTaskIdRef.current = activeTaskId;
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       const editing = isEditableElement(e.target);
       const modalOpen = commandPaletteOpen || quickSwitcherOpen || shortcutHelpOpen;
+      // Step 3: inline create/rename rows are transient modals too — their own
+      // inputs handle Enter/Esc locally, so global single keys stay suppressed.
+      const inlineComposerOpen = isCreatingTask || editingTaskId !== null;
+      const trapOpen = modalOpen || inlineComposerOpen;
       const mod = e.metaKey || e.ctrlKey;
 
       // ---- B. Global modifier shortcuts (fire even while typing) ----------
@@ -87,6 +109,14 @@ export function useKeyboardEngine() {
 
       // ---- Escape: priority cascade (works everywhere, incl. inputs) -------
       if (e.key === 'Escape') {
+        // Step 3: cancel inline create / rename first when nothing else is open.
+        if (!modalOpen && inlineComposerOpen) {
+          e.preventDefault();
+          setIsCreatingTask(false);
+          setEditingTaskId(null);
+          triggerKeyFeedback('Esc', 'Cancelled Inline Edit');
+          return;
+        }
         if (modalOpen) {
           e.preventDefault();
           setCommandPaletteOpen(false);
@@ -141,8 +171,9 @@ export function useKeyboardEngine() {
       }
 
       // ---- D. Single-key canvas ergonomics ---------------------------------
-      // When a modal is open, swallow remaining single keys (Esc handled above).
-      if (modalOpen) return;
+      // When a modal (or inline composer) is open, swallow remaining single
+      // keys (Esc handled above).
+      if (trapOpen) return;
 
       switch (e.key) {
         case 'j':
@@ -174,6 +205,45 @@ export function useKeyboardEngine() {
           setCanvasViewMode('diff');
           triggerKeyFeedback('d', 'Inspect AI Diff');
           return;
+        // ---- Step 3: stream power shortcuts ------------------------------
+        case 'c':
+          e.preventDefault();
+          setIsCreatingTask(true);
+          triggerKeyFeedback('c', 'New Inline Task');
+          return;
+        case 'e':
+          e.preventDefault();
+          if (canvasViewMode === 'stream') {
+            const focused = filteredTasksRef.current[focusedTaskIndexRef.current];
+            if (focused) {
+              setEditingTaskId(focused.id);
+              triggerKeyFeedback('e', 'Inline Rename');
+            }
+          }
+          return;
+        case 's':
+          e.preventDefault();
+          cycleFocusedTaskStatus();
+          triggerKeyFeedback('s', 'Cycle Status');
+          return;
+        case 'r':
+          e.preventDefault();
+          triggerAgentOnTask(activeTaskIdRef.current);
+          triggerKeyFeedback('r', 'Run AI Agent');
+          return;
+        case '1':
+        case '2':
+        case '3':
+        case '4': {
+          e.preventDefault();
+          const priority = `P${Number(e.key) - 1}`;
+          const focused = filteredTasksRef.current[focusedTaskIndexRef.current];
+          if (focused) {
+            updateTaskPriority(focused.id, priority);
+            triggerKeyFeedback(e.key, `Set Priority ${priority}`);
+          }
+          return;
+        }
         case '?':
           e.preventDefault();
           setShortcutHelpOpen(!shortcutHelpOpen);
@@ -210,10 +280,17 @@ export function useKeyboardEngine() {
     toggleFocusedTaskDone,
     triggerKeyFeedback,
     addSystemLog,
+    setIsCreatingTask,
+    setEditingTaskId,
+    updateTaskPriority,
+    cycleFocusedTaskStatus,
+    triggerAgentOnTask,
     canvasViewMode,
     commandPaletteOpen,
     quickSwitcherOpen,
     shortcutHelpOpen,
+    isCreatingTask,
+    editingTaskId,
     sidebarOpen,
     terminalOpen,
   ]);
