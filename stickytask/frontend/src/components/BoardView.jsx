@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DragDropContext, Droppable } from 'react-beautiful-dnd';
 import TaskCard from './TaskCard';
 import { STATUSES, COLUMN_TITLES } from '../utils';
@@ -6,7 +6,16 @@ import { STATUSES, COLUMN_TITLES } from '../utils';
 // Kanban board: three droppable columns; dropping fires onDragEnd which the
 // parent uses to call PATCH /tasks/:id/status.
 export default function BoardView({ tasks, onDragEnd, onEdit, onDelete, onSnooze }) {
-  const byStatus = Object.fromEntries(STATUSES.map((s) => [s, tasks.filter((t) => t.status === s)]));
+  // Perf: single O(n) pass to bucket tasks by status (instead of filtering
+  // the whole array once per column), memoized so unrelated re-renders don't
+  // redo the work.
+  const byStatus = useMemo(() => {
+    const buckets = Object.fromEntries(STATUSES.map((s) => [s, []]));
+    for (const t of tasks) {
+      if (buckets[t.status]) buckets[t.status].push(t);
+    }
+    return buckets;
+  }, [tasks]);
 
   function handleDragEnd(result) {
     if (!result.destination || result.source.droppableId === result.destination.droppableId) return;

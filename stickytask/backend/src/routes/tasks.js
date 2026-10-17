@@ -67,11 +67,17 @@ async function fetchTasks({ status, priority, tag, showSnoozed }) {
     where.push(`$${params.length} = ANY(tags)`);
   }
   if (!showSnoozed) {
-    // Exclude tasks whose snooze_until is in the future.
-    where.push(`(snooze_until IS NULL OR snooze_until <= NOW())`);
+    // Exclude tasks whose snooze_until is in the future. NOW() is replaced by
+    // a bound parameter so Postgres can use prepared statements / plan cache
+    // instead of re-planning every poll request.
+    params.push(new Date());
+    where.push(`(snooze_until IS NULL OR snooze_until <= $${params.length})`);
   }
 
-  const sql = `SELECT * FROM tasks ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at ASC`;
+  // Explicit column list + LIMIT: avoids pulling wide rows and caps work per
+  // request even if the table grows large.
+  const sql = `SELECT id, title, description, due_date, due_time, priority, tags, status, snooze_until, created_at, updated_at
+FROM tasks ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at ASC LIMIT 1000`;
   const { rows } = await db.query(sql, params);
   return rows;
 }
@@ -220,9 +226,10 @@ router.post('/digest', async (req, res, next) => {
         title: t.title,
         status: t.status,
         priority: t.priority,
-        // pg returns DATE as a full JS Date; normalize to YYYY-MM-DD / HH:MM:SS
-        // strings so both AI providers and the heuristic digest compare cleanly.
-        due_date: t.due_date ? `${String(t.due_date.getFullYear())}-${String(t.due_date.getMonth() + 1).padStart(2, '0')}-${String(t.due_date.getDate()).padStart(2, '0')}` : null,
+        // db.js keeps DATE/TIME as raw Postgres strings ('YYYY-MM-DD' /
+        // 'HH:MM:SS'), so no Date→string conversion is needed here — just a
+        // cheap slice for the time field.
+        due_date: t.due_date || null,
         due_time: typeof t.due_time === 'string' ? t.due_time.slice(0, 5) : (t.due_time ? String(t.due_time) : null),
         tags: t.tags,
       }))

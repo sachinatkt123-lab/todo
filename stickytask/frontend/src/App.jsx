@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api/client';
 import QuickAdd from './components/QuickAdd';
 import ListView from './components/ListView';
@@ -6,6 +6,12 @@ import BoardView from './components/BoardView';
 import TaskFormModal from './components/TaskFormModal';
 import DigestModal from './components/DigestModal';
 import { isSnoozed } from './utils';
+
+// Poll cadence: while any task is snoozed we poll fast (5s) so it reappears
+// promptly; otherwise the board is static and a slow 60s poll is plenty —
+// cutting idle API traffic by ~12×.
+const FAST_MS = 5000;
+const SLOW_MS = 60000;
 
 export default function App() {
   const [view, setView] = useState('list'); // 'list' | 'board'
@@ -23,6 +29,10 @@ export default function App() {
   const [digestText, setDigestText] = useState('');
   const [digestError, setDigestError] = useState(null);
 
+  // Latest tasks without making the polling effect depend on them.
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+
   // Poll so snoozed tasks reappear automatically when their time passes.
   const refresh = useCallback(async () => {
     try {
@@ -35,9 +45,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 5000);
-    return () => clearInterval(id);
+    let timer;
+    let cancelled = false;
+    const schedule = () => {
+      if (cancelled) return;
+      const delay = tasksRef.current.some((t) => isSnoozed(t)) ? FAST_MS : SLOW_MS;
+      timer = setTimeout(async () => {
+        await refresh();
+        schedule();
+      }, delay);
+    };
+    refresh().then(schedule);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [refresh]);
 
   // Client-side guard: hide anything still snoozed (server already filters,
@@ -55,10 +77,10 @@ export default function App() {
     setFormOpen(true);
   }
 
-  function openEdit(task) {
+  const openEdit = useCallback((task) => {
     setFormInitial({ ...task });
     setFormOpen(true);
-  }
+  }, []);
 
   async function handleSave(payload, id) {
     setSaving(true);
@@ -74,7 +96,7 @@ export default function App() {
     }
   }
 
-  async function handleDelete(task) {
+  const handleDelete = useCallback(async (task) => {
     if (!window.confirm(`Delete "${task.title}"?`)) return;
     try {
       await api.deleteTask(task.id);
@@ -82,20 +104,21 @@ export default function App() {
     } catch (err) {
       alert(err.message);
     }
-  }
+  }, []);
 
-  async function handleSnooze(task) {
+  const handleSnooze = useCallback(async (task) => {
     const until = new Date(Date.now() + 60 * 60 * 1000); // +1 hour
+    const iso = until.toISOString();
     try {
-      await api.updateTask(task.id, { snooze_until: until.toISOString() });
-      setTasks((ts) => ts.map((t) => (t.id === task.id ? { ...t, snooze_until: until.toISOString() } : t)));
+      await api.updateTask(task.id, { snooze_until: iso });
+      setTasks((ts) => ts.map((t) => (t.id === task.id ? { ...t, snooze_until: iso } : t)));
     } catch (err) {
       alert(err.message);
     }
-  }
+  }, []);
 
   // ----- board drag → PATCH status -----------------------------------------
-  async function handleDragEnd(taskId, toStatus) {
+  const handleDragEnd = useCallback(async (taskId, toStatus) => {
     // optimistic update for snappy feel
     setTasks((ts) => ts.map((t) => (t.id === taskId ? { ...t, status: toStatus } : t)));
     try {
@@ -104,7 +127,7 @@ export default function App() {
       alert(`Move failed: ${err.message}`);
       refresh();
     }
-  }
+  }, [refresh]);
 
   // ----- digest -------------------------------------------------------------
   async function openDigest() {

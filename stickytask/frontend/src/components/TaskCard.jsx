@@ -4,7 +4,12 @@ import { noteStyle, PRIORITY_BADGE, formatDue, isOverdue, justReappeared } from 
 
 // A single sticky-note card. Used in both board (draggable=true via
 // react-beautiful-dnd) and list views.
-export default function TaskCard({ task, index = 0, draggable = false, onEdit, onDelete, onSnooze }) {
+//
+// Perf: memoized so the 5s poll (which re-renders App) does NOT re-render
+// every unchanged card — only tasks whose object identity changed (edited,
+// dragged, snoozed…) update. Callbacks are stable (useCallback in App), so
+// shallow prop comparison works well here.
+function TaskCard({ task, index = 0, draggable = false, onEdit, onDelete, onSnooze }) {
   const { rotation, color } = noteStyle(task.id);
   const due = formatDue(task);
   const overdue = isOverdue(task);
@@ -90,3 +95,5 @@ export default function TaskCard({ task, index = 0, draggable = false, onEdit, o
     </Draggable>
   );
 }
+
+export default React.memo(TaskCard);
