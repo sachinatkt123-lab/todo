@@ -2,7 +2,7 @@ import React from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import TaskStreamView from '../canvas/TaskStreamView';
 import TaskDocCanvas from '../canvas/TaskDocCanvas';
-import TaskPreviewCard from '../canvas/TaskPreviewCard';
+import AiDiffView from '../canvas/AiDiffView';
 
 const MODE_CYCLE = ['stream', 'doc', 'diff'];
 
@@ -93,10 +93,9 @@ function CenterCanvas() {
           // sticky nav bar, scrollable doc body and slash command dock).
           <TaskDocCanvas />
         ) : (
-          // Phase 2 — AI Diff Viewer lands here; keep the metadata preview card.
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-            <TaskPreviewCard mode={canvasViewMode} />
-          </div>
+          // Step 6 — AI Diff & Merge Engine owns the 'diff' slot full-bleed
+          // (sticky deliverable header, unified diff body, merge decision bar).
+          <AiDiffView />
         )}
       </div>
     </main>

@@ -190,22 +190,28 @@ export function useKeyboardEngine() {
       // Step 4: in doc view, most stream-only keys stay dormant so users can
       // write naturally; only Esc (above), d and ? remain active here.
       const inDoc = canvasViewMode === 'doc';
+      // Step 6: inside the AI Diff view, j/k/x/c/s/1-4 are dormant — the diff
+      // surface owns its own merge controls; keep r (re-dispatch), Enter/Esc
+      // (back to stream) and ? alive for operator ergonomics.
+      const inDiff = canvasViewMode === 'diff';
 
       switch (e.key) {
         case 'j':
         case 'ArrowDown':
+          if (inDiff) return;
           e.preventDefault();
           moveTaskFocus('down');
           triggerKeyFeedback(e.key === 'j' ? 'j' : '↓', 'Next Task');
           return;
         case 'k':
         case 'ArrowUp':
+          if (inDiff) return;
           e.preventDefault();
           moveTaskFocus('up');
           triggerKeyFeedback(e.key === 'k' ? 'k' : '↑', 'Previous Task');
           return;
         case 'x':
-          if (inDoc) return; // dormant inside the spec editor
+          if (inDoc || inDiff) return; // dormant inside spec editor & diff view
           e.preventDefault();
           toggleFocusedTaskDone();
           triggerKeyFeedback('x', 'Toggle Done');
@@ -216,17 +222,20 @@ export function useKeyboardEngine() {
             setCanvasViewMode('doc');
           } else if (inDoc) {
             setCanvasViewMode('stream'); // Enter toggles back from doc
+          } else if (inDiff) {
+            setCanvasViewMode('stream'); // Enter returns from diff review
           }
           triggerKeyFeedback('Enter', canvasViewMode === 'stream' ? 'Open Spec Doc' : 'Return to Stream');
           return;
         case 'd':
+          if (inDiff) return; // already reviewing the diff
           e.preventDefault();
           setCanvasViewMode('diff');
           triggerKeyFeedback('d', 'Inspect AI Diff');
           return;
         // ---- Step 3: stream power shortcuts ------------------------------
         case 'c':
-          if (inDoc) return;
+          if (inDoc || inDiff) return;
           e.preventDefault();
           setIsCreatingTask(true);
           triggerKeyFeedback('c', 'New Inline Task');
@@ -242,7 +251,7 @@ export function useKeyboardEngine() {
           }
           return;
         case 's':
-          if (inDoc) return;
+          if (inDoc || inDiff) return;
           e.preventDefault();
           cycleFocusedTaskStatus();
           triggerKeyFeedback('s', 'Cycle Status');
@@ -257,7 +266,7 @@ export function useKeyboardEngine() {
         case '2':
         case '3':
         case '4': {
-          if (inDoc) return;
+          if (inDoc || inDiff) return;
           e.preventDefault();
           const priority = `P${Number(e.key) - 1}`;
           const focused = filteredTasksRef.current[focusedTaskIndexRef.current];
