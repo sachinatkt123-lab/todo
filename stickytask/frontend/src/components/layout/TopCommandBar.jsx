@@ -8,83 +8,57 @@ const PANEL_ICON = (
   </svg>
 );
 
-const TERMINAL_ICON = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 17 10 11 4 5" />
-    <line x1="12" y1="17" x2="20" y2="17" />
-  </svg>
-);
-
 const SEARCH_ICON = (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8" />
     <line x1="21" y1="21" x2="16.65" y2="16.65" />
   </svg>
 );
 
-const CHEVRON_DOWN = (
-  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9" />
-  </svg>
-);
-
-const VIEW_MODES = [
-  { id: 'stream', label: 'Stream' },
-  { id: 'doc', label: 'Spec Doc' },
-  { id: 'diff', label: 'AI Diff' },
-];
-
-function Kbd({ children }) {
-  return (
-    <kbd className="font-mono text-[10px] leading-none text-zinc-500 bg-zinc-800/80 border border-zinc-700/60 rounded px-1 py-0.5">
-      {children}
-    </kbd>
-  );
-}
-
+// Redesign — a calm, human header: logo + workspace on the left, one friendly
+// search / "tell AI what to do" bar in the center, and just two actions on the
+// right ("+ New Task" and "✨ Ask AI"). No breadcrumbs, no mode switches, no
+// [Cmd+P] bracket clutter.
 function TopCommandBar() {
   const {
     sidebarOpen,
-    terminalOpen,
-    activeTaskId,
-    canvasViewMode,
+    tasks,
     toggleSidebar,
-    toggleTerminal,
-    setQuickSwitcherOpen,
     setCommandPaletteOpen,
-    setCanvasViewMode,
+    setQuickSwitcherOpen,
+    setIsCreatingTask,
     addSystemLog,
   } = useWorkspace();
 
-  const handleQuickJump = () => {
-    // Step 5: never stack modals — close the palette before opening switcher.
-    setCommandPaletteOpen(false);
-    setQuickSwitcherOpen(true);
-    addSystemLog('USR', 'Quick Jump palette requested from command bar');
-  };
+  const readyCount = tasks.filter((t) => t.agentStatus === 'diff-ready').length;
 
-  const handleComposer = () => {
-    // Step 5: the Composer button now opens the real Omni Command Palette.
+  const handleSearch = () => {
+    // Never stack modals — the search/AI bar opens the Omni palette.
     setQuickSwitcherOpen(false);
     setCommandPaletteOpen(true);
-    addSystemLog('AGENT', 'Omni-Agent Composer invoked — awaiting prompt routing');
   };
 
-  const handleModeChange = (mode) => {
-    setCanvasViewMode(mode);
-    addSystemLog('USR', `Canvas view mode switched to "${mode}"`);
+  const handleAskAi = () => {
+    setQuickSwitcherOpen(false);
+    setCommandPaletteOpen(true);
+    addSystemLog('AGENT', 'AI assistant opened — tell it what you need done');
+  };
+
+  const handleNewTask = () => {
+    setIsCreatingTask(true);
+    addSystemLog('USR', 'Started creating a new task');
   };
 
   return (
-    <header className="h-11 border-b border-zinc-800/80 bg-[#09090b] px-3 flex items-center justify-between select-none z-20">
-      {/* Left */}
-      <div className="flex items-center gap-3 min-w-0">
+    <header className="h-14 border-b border-zinc-800/80 bg-[#09090b] px-4 flex items-center justify-between gap-4 select-none z-20">
+      {/* Left — logo & workspace name */}
+      <div className="flex items-center gap-3 min-w-0 shrink-0">
         <button
           type="button"
           onClick={toggleSidebar}
-          title="Toggle Sidebar (Cmd+B)"
+          title="Toggle sidebar"
           aria-label="Toggle sidebar"
-          className={`p-1.5 rounded transition-colors ${
+          className={`p-1.5 rounded-lg transition-colors ${
             sidebarOpen
               ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/30'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'
@@ -93,77 +67,45 @@ function TopCommandBar() {
           {PANEL_ICON}
         </button>
 
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-zinc-700 transition-colors">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
-          <span className="text-[11px] font-semibold tracking-wide text-zinc-300">ACME CORP</span>
-          <span className="text-zinc-500">{CHEVRON_DOWN}</span>
+        <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-400 to-emerald-500 flex items-center justify-center text-sm font-bold text-zinc-950 shadow-[0_0_14px_rgba(6,182,212,0.35)]">
+          S
+        </span>
+        <div className="leading-tight">
+          <p className="text-sm font-semibold text-zinc-100">StickyTask</p>
+          <p className="text-[11px] text-zinc-500">Acme Team</p>
         </div>
-
-        <nav className="hidden md:flex items-center text-xs font-mono truncate" aria-label="Breadcrumb">
-          <span className="text-zinc-400">Core Engineering</span>
-          <span className="text-zinc-600 mx-1">/</span>
-          <span className="text-zinc-400">Sprint 14</span>
-          <span className="text-zinc-600 mx-1">/</span>
-          <span className="text-zinc-200">#{activeTaskId}</span>
-          <span className="text-zinc-600">/</span>
-        </nav>
       </div>
 
-      {/* Center */}
-      <div className="flex items-center justify-center flex-1 min-w-0 px-4">
+      {/* Center — one friendly search & AI bar */}
+      <div className="flex items-center justify-center flex-1 min-w-0 px-2">
         <button
           type="button"
-          onClick={handleQuickJump}
-          className="w-80 md:w-96 h-7 px-2.5 rounded bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 flex items-center justify-between text-xs text-zinc-400 cursor-pointer transition-all"
+          onClick={handleSearch}
+          className="w-full max-w-md h-9 px-3 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-600 flex items-center gap-2 text-sm text-zinc-500 transition-all"
         >
-          <span className="flex items-center gap-2 min-w-0">
-            {SEARCH_ICON}
-            <span className="truncate">Jump to task, spec, or branch...</span>
-          </span>
-          <Kbd>Cmd+P</Kbd>
+          {SEARCH_ICON}
+          <span className="truncate">Search tasks or tell AI what to do...</span>
         </button>
       </div>
 
-      {/* Right */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center rounded bg-zinc-900 border border-zinc-800 p-0.5">
-          {VIEW_MODES.map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              onClick={() => handleModeChange(mode.id)}
-              className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                canvasViewMode === mode.id
-                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
-
+      {/* Right — exactly two clear actions */}
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="hidden xl:inline text-[11px] text-zinc-600 mr-1">
+          {readyCount > 0 ? `${readyCount} AI draft${readyCount > 1 ? 's' : ''} waiting ✨` : 'All caught up!'}
+        </span>
         <button
           type="button"
-          onClick={handleComposer}
-          className="flex items-center gap-1.5 border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs px-2.5 py-1 rounded font-mono hover:bg-cyan-500/20 transition-colors shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+          onClick={handleAskAi}
+          className="px-3.5 py-2 rounded-xl text-sm font-medium text-purple-300 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 transition-colors"
         >
-          <span>⚡ Composer</span>
-          <Kbd>Cmd+K</Kbd>
+          ✨ Ask AI
         </button>
-
         <button
           type="button"
-          onClick={toggleTerminal}
-          title="Toggle Terminal (Cmd+J)"
-          aria-label="Toggle terminal"
-          className={`p-1.5 rounded transition-colors ${
-            terminalOpen
-              ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/30'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'
-          }`}
+          onClick={handleNewTask}
+          className="px-4 py-2 rounded-xl text-sm font-semibold text-zinc-950 bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 shadow-[0_0_18px_rgba(16,185,129,0.4)] transition-all"
         >
-          {TERMINAL_ICON}
+          + New Task
         </button>
       </div>
     </header>

@@ -168,15 +168,15 @@ const TaskRow = React.memo(function TaskRow({ task, index, focused, editing, onS
         {task.agentStatus === 'idle' && (
           <button
             type="button"
+            title={`${task.agentSummary} — click to dispatch agent`}
             onClick={(e) => {
               e.stopPropagation();
-              onSelect(index, task.id, false);
+              onSelect(index, task.id);
               triggerAgentOnTask(task.id);
             }}
-            className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900/60 text-zinc-600 hover:text-cyan-400 hover:border-cyan-500/30 whitespace-nowrap transition-colors"
-            title={`${task.agentSummary} — click to dispatch agent`}
+            className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-zinc-700/80 bg-zinc-900 text-zinc-500 hover:text-cyan-300 hover:border-cyan-500/40 transition-all shrink-0 whitespace-nowrap"
           >
-            ○ Idle
+            ○ Idle · Dispatch [r]
           </button>
         )}
         <span className="text-[10px] font-mono text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800/80 hidden md:inline-flex whitespace-nowrap">
