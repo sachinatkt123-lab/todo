@@ -18,14 +18,20 @@ const NOTE_COLORS = [
 ];
 
 // Deterministic per-task rotation (-2..+2 degrees) and color, so cards don't
-// jitter on re-render.
+// jitter on re-render. Memoized: every poll re-renders all cards, and the hash
+// loop would otherwise run again for unchanged tasks.
+const styleCache = new Map();
 export function noteStyle(taskId) {
+  const cached = styleCache.get(taskId);
+  if (cached) return cached;
   let hash = 0;
   const s = String(taskId);
   for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
   const rotation = ((hash % 41) - 20) / 10; // -2.0 .. 2.0
   const color = NOTE_COLORS[hash % NOTE_COLORS.length];
-  return { rotation, color };
+  const style = { rotation, color };
+  styleCache.set(taskId, style);
+  return style;
 }
 
 export function isSnoozed(task, now = Date.now()) {
