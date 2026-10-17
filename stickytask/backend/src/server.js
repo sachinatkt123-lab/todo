@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const tasksRouter = require('./routes/tasks');
+const assistantRouter = require('./routes/assistant');
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use(express.json({ limit: '100kb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/tasks', tasksRouter);
+app.use('/assistant', assistantRouter);
 
 // Error handler — surfaces DB/provider failures as JSON.
 // eslint-disable-next-line no-unused-vars
