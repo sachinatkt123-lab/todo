@@ -2,10 +2,12 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { buildAiDeliverable } from './deliverables';
 
 const WorkspaceContext = createContext(null);
 
@@ -21,10 +23,16 @@ function formatTimestamp(date = new Date()) {
 }
 
 const INITIAL_LOGS = [
-  { id: nextLogId(), timestamp: formatTimestamp(), source: 'SYS', message: 'StickyTask 2030 Kernel initialized' },
-  { id: nextLogId(), timestamp: formatTimestamp(), source: 'SYS', message: 'Workspace mounted: stickytask-core' },
-  { id: nextLogId(), timestamp: formatTimestamp(), source: 'AGENT', message: 'Background orchestrator standing by (0 active runs)' },
+  { id: nextLogId(), timestamp: formatTimestamp(), source: 'SYS', message: 'Welcome back! Your AI assistant is ready.' },
+  { id: nextLogId(), timestamp: formatTimestamp(), source: 'SYS', message: 'Team workspace "Acme Team" loaded' },
+  { id: nextLogId(), timestamp: formatTimestamp(), source: 'AGENT', message: 'AI assistant standing by — 2 drafts waiting for your approval' },
 ];
+
+// Redesign — the noisy developer telemetry simulator is retired. The right
+// panel is now a friendly "AI Assistant & Task Details" surface, so no raw
+// agent event stream is emitted anymore. (Export kept as a no-op so any
+// legacy importers stay safe.)
+export function useAgentTelemetrySimulator() {}
 
 let checklistIdCounter = 0;
 function nextChecklistId() {
@@ -51,7 +59,7 @@ function recalcSubtasks(checklists) {
  */
 function withSpecDefaults(task, spec = {}) {
   const checklists = spec.checklists || [];
-  return {
+  const enriched = {
     ...task,
     objective: spec.objective || `No objective drafted yet for "${task.title}".`,
     checklists,
@@ -59,169 +67,147 @@ function withSpecDefaults(task, spec = {}) {
     codeSnippet: spec.codeSnippet || null,
     subtaskCount: spec.subtaskCount || recalcSubtasks(checklists),
   };
+  // Step 6 — every task carries an AI deliverable (before/after artifact).
+  // Seeds may override pieces via spec.aiDeliverable; otherwise build from
+  // the realistic per-prefix templates in ./deliverables.
+  enriched.aiDeliverable = {
+    ...buildAiDeliverable(enriched),
+    ...(spec.aiDeliverable || {}),
+  };
+  return enriched;
 }
 
-// Step 3 — enriched high-density task model (7 seeds across P0–P3, mixed
-// statuses and agent states: 2 diff-ready, 1 running, rest idle/completed).
-// Step 4 — each seed now carries full spec-document content (objective,
-// nested checklists, acceptance criteria, optional code snippet).
+// Redesign seed set — five realistic everyday business tasks any team member
+// can relate to (Sales / Marketing / Finance / Operations), plain-word
+// priorities (Urgent / High / Normal) and friendly AI states. Internal ids
+// remain stable so keyboard/palette wiring keeps working, but the UI never
+// surfaces them as jargon.
 const INITIAL_TASKS = [
   withSpecDefaults(
     {
-      id: 'ENG-104', title: 'Fix WebSocket Reconnect Dropping Sync', priority: 'P0', status: 'In-Progress',
-      assignee: 'Sachin', branch: 'feat/ws-sync', agentStatus: 'diff-ready',
-      agentSummary: 'Drafted patch in ws_client.ts (+42 -8)', updatedAt: '2m ago',
+      id: 'ENG-104', title: 'Send follow-up email to 5 warm client leads', category: 'Sales',
+      priority: 'High', status: 'In-Progress', assignee: 'Adithya', agentStatus: 'diff-ready',
+      agentSummary: 'AI wrote 5 personalized follow-up emails with calendar booking links attached.',
+      updatedAt: '2m ago',
     },
     {
       objective:
-        'When the laptop wakes from sleep, the WebSocket reconnect handshake races with the pending sync queue and drops board deltas.\nRepro: sleep 10 min → wake → sticky notes show stale positions until a hard refresh.\nGoal: exponential-backoff reconnect + last-event-id replay so zero deltas are lost.',
+        "Reach out to the 5 leads from yesterday's webinar and schedule a 15-minute intro call.",
       checklists: [
-        { id: 'chk-a1', label: 'Instrument reconnect lifecycle (open/close/error events)', checked: true, indent: 0 },
-        { id: 'chk-a2', label: 'Add exponential backoff with jitter (max 30s)', checked: true, indent: 1 },
-        { id: 'chk-a3', label: 'Persist lastEventId and replay missed deltas on resume', checked: false, indent: 0 },
-        { id: 'chk-a4', label: 'Cover wake-from-sleep path in integration test', checked: false, indent: 1 },
+        { id: 'chk-a1', label: 'Review the 5 webinar leads and their notes', checked: true, indent: 0 },
+        { id: 'chk-a2', label: 'Personalize the AI-drafted emails', checked: true, indent: 1, agentGenerated: true },
+        { id: 'chk-a3', label: 'Send emails with the booking link', checked: false, indent: 0 },
+        { id: 'chk-a4', label: 'Add replies to the sales pipeline', checked: false, indent: 1 },
       ],
       subtaskCount: { completed: 2, total: 4 },
       acceptanceCriteria: [
-        { id: 'ac-a1', checkpoint: 'Zero dropped deltas after simulated 10-min sleep', threshold: '0 losses / 500 events', status: 'Pending' },
-        { id: 'ac-a2', checkpoint: 'Reconnect p95 latency', threshold: '< 1.2s', status: 'Passed' },
+        { id: 'ac-a1', checkpoint: 'All 5 leads contacted', threshold: 'Emails sent today', status: 'Pending' },
+        { id: 'ac-a2', checkpoint: 'Intro calls booked', threshold: 'At least 2 on the calendar', status: 'Pending' },
       ],
-      codeSnippet: {
-        language: 'typescript', filename: 'ws_client.ts',
-        code: 'const backoff = Math.min(MAX_DELAY, BASE_DELAY * 2 ** attempt) * (0.8 + Math.random() * 0.4);\nsocket.on("reconnect", async () => {\n  await replayDeltas(lastEventId); // ✨ agent-drafted\n});',
+      aiDeliverable: {
+        __seedOverride: {
+          summary: 'AI wrote 5 personalized follow-up emails with calendar booking links attached.',
+          beforeContent: ['Goal: Follow up with webinar leads', 'Status: Not started'],
+          afterContent: [
+            'Subject: Quick follow-up & next steps!',
+            '',
+            'Hi Rahul,',
+            'Great having you at our session yesterday. I put together a custom plan for your team—would Tuesday at 3 PM work for a quick 10-min chat?',
+            '',
+            'Best,',
+            'Adithya',
+          ],
+        },
       },
     }
   ),
   withSpecDefaults(
     {
-      id: 'OPS-202', title: 'Automate Q3 Enterprise Customer Onboarding Flow', priority: 'P1', status: 'Backlog',
-      assignee: 'Adithya', branch: 'ops/onboard-agent', agentStatus: 'idle',
-      agentSummary: '2 sub-tasks queued', updatedAt: '14m ago',
+      id: 'OPS-202', title: 'Create 7-day social media content calendar', category: 'Marketing',
+      priority: 'Urgent', status: 'Backlog', assignee: 'Sachin', agentStatus: 'diff-ready',
+      agentSummary: 'AI generated 7 daily post topics, hooks, and caption drafts.',
+      updatedAt: '14m ago',
     },
     {
-      objective:
-        'Enterprise onboarding still requires 6 manual steps per customer (workspace provisioning, SSO config, seat invites, digest opt-in).\nTarget: an autonomous runner that completes provisioning end-to-end with a single human approval gate at the SSO step.',
+      objective: "Plan Instagram Reels and LinkedIn posts for next week's product launch.",
       checklists: [
-        { id: 'chk-b1', label: 'Map current 6-step manual flow & identify automation seams', checked: false, indent: 0 },
-        { id: 'chk-b2', label: 'Draft Terraform module for workspace provisioning', checked: false, indent: 1 },
-        { id: 'chk-b3', label: 'Define human approval gate UX for SSO config', checked: false, indent: 0 },
+        { id: 'chk-b1', label: 'Confirm launch-week key messages', checked: false, indent: 0 },
+        { id: 'chk-b2', label: 'Approve the AI-drafted 7-day plan', checked: false, indent: 0, agentGenerated: true },
+        { id: 'chk-b3', label: 'Schedule posts in the publishing tool', checked: false, indent: 1 },
       ],
       acceptanceCriteria: [
-        { id: 'ac-b1', checkpoint: 'Onboarding touches reduced from 6 to ≤ 2', threshold: 'Measured over 10 pilot customers', status: 'Pending' },
+        { id: 'ac-b1', checkpoint: 'One post per day planned', threshold: '7 days covered', status: 'Pending' },
       ],
-    }
-  ),
-  withSpecDefaults(
-    {
-      id: 'ENG-105', title: 'Add pgvector embeddings for organizational memory', priority: 'P2', status: 'In-Review',
-      assignee: 'Hareesha', branch: 'chore/pgvector', agentStatus: 'completed',
-      agentSummary: 'Merged migration 0042 (+118 -3)', updatedAt: '1h ago',
-    },
-    {
-      objective:
-        'Store task/spec embeddings in Postgres via pgvector so the Omni-Agent can retrieve organizational context semantically instead of keyword grep.\nMigration 0042 adds the vector(1536) column + HNSW index.',
-      checklists: [
-        { id: 'chk-c1', label: 'Enable pgvector extension in docker init', checked: true, indent: 0 },
-        { id: 'chk-c2', label: 'Migration 0042: embeddings table + HNSW index', checked: true, indent: 0 },
-        { id: 'chk-c3', label: 'Backfill script for historical tasks', checked: true, indent: 1 },
-        { id: 'chk-c4', label: 'Wire retrieval into digest prompt assembly', checked: true, indent: 0 },
-        { id: 'chk-c5', label: 'Load-test ANN query at 100k vectors', checked: true, indent: 1 },
-      ],
-      subtaskCount: { completed: 5, total: 5 },
-      acceptanceCriteria: [
-        { id: 'ac-c1', checkpoint: 'ANN recall@10 vs brute force', threshold: '≥ 0.95', status: 'Passed' },
-        { id: 'ac-c2', checkpoint: 'Query p99 at 100k rows', threshold: '< 80ms', status: 'Passed' },
-      ],
-    }
-  ),
-  withSpecDefaults(
-    {
-      id: 'SEC-089', title: 'Implement Role-Based Guardrails for Red-Tier Agent Actions', priority: 'P0', status: 'In-Progress',
-      assignee: 'Sachin', branch: 'sec/agent-guardrails', agentStatus: 'running',
-      agentSummary: 'Scanning policy engine… 68%', updatedAt: 'just now',
-    },
-    {
-      objective:
-        'Red-tier actions (deploy, schema migration, bulk delete) must be blocked unless a human with role=admin explicitly approves.\nThe agent is currently scanning all call-sites that mutate production state to classify them into tiers.',
-      checklists: [
-        { id: 'chk-d1', label: 'Classify all mutating endpoints into green/amber/red tiers', checked: true, indent: 0 },
-        { id: 'chk-d2', label: 'Policy engine middleware for red-tier interception', checked: false, indent: 1 },
-        { id: 'chk-d3', label: 'Approval-token issuance flow (admin only)', checked: false, indent: 1 },
-        { id: 'chk-d4', label: 'Audit-log every denied attempt', checked: false, indent: 0 },
-        { id: 'chk-d5', label: 'Dry-run mode flag for staging agents', checked: false, indent: 2 },
-        { id: 'chk-d6', label: 'Threat-model review with security guild', checked: false, indent: 0 },
-      ],
-      subtaskCount: { completed: 1, total: 6 },
-      acceptanceCriteria: [
-        { id: 'ac-d1', checkpoint: 'Red-tier bypass attempts', threshold: '0 in pen-test suite', status: 'Failed' },
-        { id: 'ac-d2', checkpoint: 'Deny-path audit coverage', threshold: '100% of intercepted calls logged', status: 'Pending' },
-      ],
-      codeSnippet: {
-        language: 'yaml', filename: 'policy_tiers.yaml',
-        code: 'red_tier:\n  - deploy.production\n  - db.schema.migrate\nrequires: role=admin & approval_token=fresh(5m)',
+      aiDeliverable: {
+        __seedOverride: {
+          summary: 'AI generated 7 daily post topics, hooks, and caption drafts.',
+          beforeContent: ['Need 7 days of social posts for launch week'],
+          afterContent: [
+            "Mon: Reel — 'Stop wasting time on manual tasks' (Hook + Script ready)",
+            'Tue: Carousel — 3 ways AI saves 2 hours a day',
+            'Wed: Customer story highlight',
+            'Thu: Live Q&A announcement',
+            'Fri: Weekend productivity tip',
+          ],
+        },
       },
     }
   ),
   withSpecDefaults(
     {
-      id: 'GTM-310', title: 'Synthesize Q4 Competitor Pricing Matrix via Web Agent', priority: 'P3', status: 'Done',
-      assignee: 'Rakshith', branch: 'gtm/pricing-research', agentStatus: 'completed',
-      agentSummary: 'Report generated · 14 sources cited', updatedAt: '3h ago',
+      id: 'ENG-105', title: 'Summarize monthly vendor expenses & pending bills', category: 'Finance',
+      priority: 'Normal', status: 'In-Review', assignee: 'Rakshith', agentStatus: 'idle',
+      agentSummary: 'Ready when you are — click "Let AI Do This"',
+      updatedAt: '1h ago',
     },
     {
-      objective:
-        'Autonomous web agent crawled 14 competitor pricing pages and synthesized a normalized matrix (seat tiers, usage caps, enterprise floors). Report archived to org memory.',
+      objective: 'Check all October bills and list what needs to be paid this Friday.',
       checklists: [
-        { id: 'chk-e1', label: 'Crawl & snapshot 14 competitor pricing pages', checked: true, indent: 0 },
-        { id: 'chk-e2', label: 'Normalize into unified seat/usage matrix', checked: true, indent: 0 },
-        { id: 'chk-e3', label: 'Publish digest to #gtm-leadership', checked: true, indent: 0 },
+        { id: 'chk-c1', label: 'Collect October invoices from email', checked: false, indent: 0 },
+        { id: 'chk-c2', label: 'Group by vendor and due date', checked: false, indent: 1 },
+        { id: 'chk-c3', label: 'Share the Friday payment list with finance', checked: false, indent: 0 },
+      ],
+      acceptanceCriteria: [
+        { id: 'ac-c1', checkpoint: 'Every bill categorized', threshold: 'No unassigned invoices', status: 'Pending' },
+      ],
+    }
+  ),
+  withSpecDefaults(
+    {
+      id: 'SEC-089', title: 'Prepare onboarding checklist for new graphic designer', category: 'Operations',
+      priority: 'Normal', status: 'In-Progress', assignee: 'Hareesha', agentStatus: 'running',
+      agentSummary: 'AI is gathering access lists and drafting first-week tasks…',
+      updatedAt: 'just now',
+    },
+    {
+      objective: 'Set up workspace access, brand guidelines folder, and first week tasks.',
+      checklists: [
+        { id: 'chk-d1', label: 'Request design tool licenses', checked: true, indent: 0 },
+        { id: 'chk-d2', label: 'Share the brand guidelines folder', checked: false, indent: 0 },
+        { id: 'chk-d3', label: 'Draft a friendly first-week schedule', checked: false, indent: 1, agentGenerated: true },
+      ],
+      acceptanceCriteria: [
+        { id: 'ac-d1', checkpoint: 'Day-one ready', threshold: 'All access granted before Monday', status: 'Pending' },
+      ],
+    }
+  ),
+  withSpecDefaults(
+    {
+      id: 'GTM-310', title: 'Book conference room and catering for Friday team meet', category: 'Operations',
+      priority: 'High', status: 'Done', assignee: 'Sachin', agentStatus: 'completed',
+      agentSummary: 'Room booked · catering confirmed for 12 people',
+      updatedAt: '3h ago',
+    },
+    {
+      objective: 'Arrange lunch for 12 people and reserve the main boardroom.',
+      checklists: [
+        { id: 'chk-e1', label: 'Reserve the main boardroom (Friday 12–2)', checked: true, indent: 0 },
+        { id: 'chk-e2', label: 'Order lunch for 12 (2 vegetarian)', checked: true, indent: 0 },
+        { id: 'chk-e3', label: 'Send calendar invite to the team', checked: true, indent: 0 },
       ],
       subtaskCount: { completed: 3, total: 3 },
       acceptanceCriteria: [
-        { id: 'ac-e1', checkpoint: 'Matrix freshness', threshold: 'All snapshots < 7 days old', status: 'Passed' },
-      ],
-    }
-  ),
-  withSpecDefaults(
-    {
-      id: 'ENG-106', title: 'Stream Agent Telemetry to Right Terminal Drawer', priority: 'P1', status: 'Backlog',
-      assignee: 'Hareesha', branch: 'feat/telemetry-ws', agentStatus: 'diff-ready',
-      agentSummary: 'Proposed SSE bridge (+27 -0)', updatedAt: '22m ago',
-    },
-    {
-      objective:
-        'Pipe real agent execution events (tool calls, token burn, run state) into the AGENT TERMINAL drawer over SSE so operators watch runs live instead of polling logs.',
-      checklists: [
-        { id: 'chk-f1', label: 'SSE endpoint /api/agent/events with ring buffer', checked: false, indent: 0 },
-        { id: 'chk-f2', label: 'Token-meter component bound to live burn rate', checked: true, indent: 1 },
-      ],
-      subtaskCount: { completed: 1, total: 2 },
-      acceptanceCriteria: [
-        { id: 'ac-f1', checkpoint: 'Event delivery lag', threshold: '< 250ms p95', status: 'Pending' },
-      ],
-    }
-  ),
-  withSpecDefaults(
-    {
-      id: 'PLN-011', title: 'Draft Autonomous Sprint Retro Digest with Diff Insights', priority: 'P2', status: 'In-Review',
-      assignee: 'Rakshith', branch: 'pln/retro-digest', agentStatus: 'idle',
-      agentSummary: 'Awaiting human approval gate', updatedAt: '45m ago',
-    },
-    {
-      objective:
-        'Weekly retro digest auto-generated from merged diffs + closed tasks, highlighting where agent-authored patches outperformed human estimates. Currently awaiting PM approval gate before publishing.',
-      checklists: [
-        { id: 'chk-g1', label: 'Aggregate sprint metrics (lead time, reopen rate)', checked: true, indent: 0 },
-        { id: 'chk-g2', label: 'LLM summary of top 5 merged diffs', checked: true, indent: 1 },
-        { id: 'chk-g3', label: 'Sentiment trend vs previous sprint', checked: true, indent: 1 },
-        { id: 'chk-g4', label: 'Approval-gate workflow (PM sign-off)', checked: true, indent: 0 },
-        { id: 'chk-g5', label: 'Auto-publish channel binding', checked: false, indent: 0 },
-        { id: 'chk-g6', label: 'Archive artifact to org memory (pgvector)', checked: false, indent: 1 },
-        { id: 'chk-g7', label: 'Notify stakeholders via digest email', checked: false, indent: 2 },
-      ],
-      subtaskCount: { completed: 4, total: 7 },
-      acceptanceCriteria: [
-        { id: 'ac-g1', checkpoint: 'Digest generation wall-clock', threshold: '< 90s per sprint', status: 'Pending' },
+        { id: 'ac-e1', checkpoint: 'Everything confirmed', threshold: 'Booking + catering receipts in email', status: 'Passed' },
       ],
     }
   ),
@@ -229,33 +215,35 @@ const INITIAL_TASKS = [
 
 const STATUS_CYCLE = ['Backlog', 'In-Progress', 'In-Review', 'Done'];
 const ASSIGNEE_POOL = ['Sachin', 'Adithya', 'Hareesha', 'Rakshith'];
+const PRIORITY_CYCLE = ['Urgent', 'High', 'Normal'];
 
-// Context-aware AI decomposition templates used by decomposeTaskWithAI.
+// Context-aware AI decomposition templates used by decomposeTaskWithAI,
+// keyed by team category with plain, actionable everyday language.
 const DECOMPOSE_TEMPLATES = {
+  Sales: [
+    'Double-check each lead name and company detail',
+    'Tweak the tone of the AI drafts if needed',
+    'Send the emails and add replies to the pipeline',
+  ],
+  Marketing: [
+    'Pick the best posting times for each day',
+    'Attach visuals or screenshots to the drafts',
+    'Schedule everything in the publishing tool',
+  ],
+  Finance: [
+    'Collect the latest invoices from email',
+    'Verify amounts against last month',
+    'Send the Friday payment list for approval',
+  ],
+  Operations: [
+    'Confirm who needs access or supplies',
+    'Check calendars before booking',
+    'Send confirmations to everyone involved',
+  ],
   ENG: [
-    'Scaffold failing regression test reproducing the issue',
-    'Implement minimal fix behind feature flag',
-    'Run agent fuzz pass against changed surface (+est. 4k tokens)',
-  ],
-  OPS: [
-    'Enumerate manual touchpoints and owner per step',
-    'Prototype scripted happy-path automation',
-    'Insert human approval gate at highest-risk transition',
-  ],
-  SEC: [
-    'Static-scan mutating call-sites for tier classification',
-    'Draft policy-as-code rules for red-tier verbs',
-    'Add deny-path audit logging + alerting hook',
-  ],
-  GTM: [
-    'Queue source crawl with freshness SLA',
-    'Normalize findings into comparison matrix',
-    'Generate executive summary with cited snapshots',
-  ],
-  PLN: [
-    'Pull sprint velocity + reopen metrics',
-    'Summarize top merged diffs via LLM',
-    'Route draft through approval-gate workflow',
+    'Review the details and gather what is missing',
+    'Draft the fix or response for a quick look',
+    'Confirm results before marking it done',
   ],
 };
 
@@ -344,11 +332,30 @@ export function WorkspaceProvider({ children }) {
 
   // ---- Step 2: keyboard-engine helpers ----------------------------------
 
-  // Step 3: j/k navigation must operate over the *filtered* stream bounds.
+  // Redesign — friendly everyday filter buckets driven by the left sidebar and
+  // the single clean pill row in the stream header.
   const applyStreamFilter = useCallback((list, filter) => {
     switch (filter) {
+      case 'ready': // ✨ Ready for Approval / Ready to Review
+        return list.filter(
+          (t) => t.agentStatus === 'diff-ready' || (t.status !== 'Done' && t.agentStatus === 'running')
+        );
+      case 'urgent': // 🔥 Urgent & Important
+        return list.filter(
+          (t) => t.priority === 'Urgent' && t.status !== 'Done'
+        );
+      case 'completed': // ✅ Completed
+        return list.filter((t) => t.status === 'Done');
+      case 'sales':
+      case 'marketing':
+      case 'operations':
+      case 'finance': {
+        const cat = filter.charAt(0).toUpperCase() + filter.slice(1);
+        return list.filter((t) => t.category === cat);
+      }
+      // Legacy keys kept working quietly for older surfaces.
       case 'p0':
-        return list.filter((t) => t.priority === 'P0');
+        return list.filter((t) => t.priority === 'Urgent' || t.priority === 'P0');
       case 'agent-ready':
         return list.filter((t) => t.agentStatus === 'diff-ready' || t.agentStatus === 'running');
       case 'active':
@@ -386,14 +393,14 @@ export function WorkspaceProvider({ children }) {
       const task = view[focusedTaskIndexRef.current];
       if (!task) return currentTasks;
       const nextStatus = task.status === 'Done' ? 'In-Progress' : 'Done';
-      addSystemLog('HOTKEY', `Toggled status for #${task.id}`);
+      addSystemLog('USR', task.status === 'Done' ? 'Reopened a task' : '✓ Marked a task as done');
       return currentTasks.map((t) => (t.id === task.id ? { ...t, status: nextStatus, updatedAt: 'just now' } : t));
     });
   }, [addSystemLog, applyStreamFilter]);
 
   const triggerKeyFeedback = useCallback((combo, label) => {
     setLastTriggeredKey({ combo, label, timestamp: Date.now() });
-    addSystemLog('HOTKEY', `${combo} → ${label}`);
+    addSystemLog('USR', `${label} (${combo})`);
   }, [addSystemLog]);
 
   // ---- Step 3: stream filter / inline create / inline edit ---------------
@@ -418,25 +425,25 @@ export function WorkspaceProvider({ children }) {
     setEditingTaskIdState(id);
   }, []);
 
-  const createTask = useCallback(({ title, priority = 'P1', assignee = 'Sachin', branch = 'feat/agent-branch' }) => {
+  const createTask = useCallback(({ title, priority = 'Normal', assignee = 'Sachin', category = 'Operations' }) => {
     const trimmed = (title || '').trim();
     if (!trimmed) return null;
     taskIdCounterRef.current += 1;
-    const newId = `ENG-${taskIdCounterRef.current}`;
+    const newId = `TASK-${taskIdCounterRef.current}`;
     const newTask = withSpecDefaults(
       {
         id: newId,
         title: trimmed,
+        category,
         priority,
         status: 'Backlog',
         assignee,
-        branch,
         agentStatus: 'idle',
-        agentSummary: 'Awaiting first dispatch',
+        agentSummary: 'Ready when you are — click "Let AI Do This"',
         updatedAt: 'just now',
       },
       {
-        objective: `Objective not drafted yet for "${trimmed}". Dispatch the agent or write it here.`,
+        objective: `Describe the goal for "${trimmed}" here, or let the AI figure out the steps.`,
         checklists: [],
         acceptanceCriteria: [],
       }
@@ -444,7 +451,7 @@ export function WorkspaceProvider({ children }) {
     setTasks((currentTasks) => [newTask, ...currentTasks]);
     setFocusedTaskIndex(0);
     setActiveTaskIdState(newId);
-    addSystemLog('USR', `Created task #${newId}`);
+    addSystemLog('USR', `Added new task "${trimmed}"`);
     return newId;
   }, [addSystemLog]);
 
@@ -452,8 +459,21 @@ export function WorkspaceProvider({ children }) {
     setTasks((currentTasks) =>
       currentTasks.map((t) => (t.id === taskId ? { ...t, priority, updatedAt: 'just now' } : t))
     );
-    addSystemLog('HOTKEY', `Set #${taskId} priority -> ${priority}`);
+    addSystemLog('USR', `Marked this task as ${priority}`);
   }, [addSystemLog]);
+
+  // Redesign — cycle the focused task's priority through the plain-word scale.
+  const cycleFocusedTaskPriority = useCallback(() => {
+    setTasks((currentTasks) => {
+      const view = applyStreamFilter(currentTasks, streamFilterRef.current);
+      const task = view[focusedTaskIndexRef.current];
+      if (!task) return currentTasks;
+      const idx = PRIORITY_CYCLE.indexOf(task.priority);
+      const next = PRIORITY_CYCLE[(idx + 1) % PRIORITY_CYCLE.length];
+      addSystemLog('USR', `Priority for "${task.title.slice(0, 40)}" → ${next}`);
+      return currentTasks.map((t) => (t.id === task.id ? { ...t, priority: next, updatedAt: 'just now' } : t));
+    });
+  }, [addSystemLog, applyStreamFilter]);
 
   const updateTaskTitle = useCallback((taskId, newTitle) => {
     const trimmed = (newTitle || '').trim();
@@ -463,7 +483,7 @@ export function WorkspaceProvider({ children }) {
         : currentTasks
     );
     setEditingTaskIdState(null);
-    if (trimmed) addSystemLog('USR', `Renamed #${taskId} → "${trimmed}"`);
+    if (trimmed) addSystemLog('USR', `Renamed to "${trimmed}"`);
   }, [addSystemLog]);
 
   const cycleFocusedTaskStatus = useCallback(() => {
@@ -473,7 +493,7 @@ export function WorkspaceProvider({ children }) {
       if (!task) return currentTasks;
       const currentIdx = STATUS_CYCLE.indexOf(task.status);
       const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length];
-      addSystemLog('HOTKEY', `Cycled #${task.id} status ${task.status} -> ${nextStatus}`);
+      addSystemLog('USR', `Status moved to ${nextStatus}`);
       return currentTasks.map((t) => (t.id === task.id ? { ...t, status: nextStatus, updatedAt: 'just now' } : t));
     });
   }, [addSystemLog, applyStreamFilter]);
@@ -482,19 +502,24 @@ export function WorkspaceProvider({ children }) {
     if (!taskId) return;
     setTasks((currentTasks) =>
       currentTasks.map((t) =>
-        t.id === taskId ? { ...t, agentStatus: 'running', agentSummary: 'Autonomous runner engaged…', updatedAt: 'just now' } : t
+        t.id === taskId ? { ...t, agentStatus: 'running', agentSummary: 'AI is working on this...', updatedAt: 'just now' } : t
       )
     );
-    addSystemLog('AGENT', `Dispatched autonomous runner on #${taskId}`);
+    addSystemLog('AGENT', 'AI started working on the task');
     setTimeout(() => {
       // Only flip to diff-ready if the task still exists and is still running.
       setTasks((currentTasks) => {
         const target = currentTasks.find((t) => t.id === taskId);
         if (!target || target.agentStatus !== 'running') return currentTasks;
-        addSystemLog('AGENT', `Diff ready for review on #${taskId}`);
+        addSystemLog('AGENT', `✨ AI finished "${(target.title || '').slice(0, 48)}" — ready for your approval`);
         return currentTasks.map((t) =>
           t.id === taskId
-            ? { ...t, agentStatus: 'diff-ready', agentSummary: `Drafted patch in ${t.branch}.ts (+${9 + (t.id.length * 3)} -4)`, updatedAt: 'just now' }
+            ? {
+                ...t,
+                agentStatus: 'diff-ready',
+                agentSummary: (t.aiDeliverable && t.aiDeliverable.summary) || 'AI prepared the work — ready for your review',
+                updatedAt: 'just now',
+              }
             : t
         );
       });
@@ -512,7 +537,7 @@ export function WorkspaceProvider({ children }) {
 
   const updateTaskMetadata = useCallback((taskId, partialUpdates) => {
     patchTask(taskId, (t) => ({ ...t, ...partialUpdates, updatedAt: 'just now' }));
-    addSystemLog('USR', `Updated metadata on #${taskId}`);
+    addSystemLog('USR', 'Updated task details');
   }, [addSystemLog, patchTask]);
 
   const updateTaskObjective = useCallback((taskId, newObjective) => {
@@ -527,7 +552,7 @@ export function WorkspaceProvider({ children }) {
           c.id === itemId ? { ...c, checked: !c.checked } : c
         );
         const item = checklists.find((c) => c.id === itemId);
-        addSystemLog('USR', `Checklist ${item && item.checked ? '✓ done' : '↺ reopened'} on #${taskId}: "${(item && item.label) || itemId}"`);
+        addSystemLog('USR', `${item && item.checked ? '✓ Completed step' : '↺ Reopened step'} "${(item && item.label) || ''}"`);
         return { ...t, checklists, subtaskCount: recalcSubtasks(checklists), updatedAt: 'just now' };
       })
     );
@@ -545,7 +570,7 @@ export function WorkspaceProvider({ children }) {
         return { ...t, checklists, subtaskCount: recalcSubtasks(checklists), updatedAt: 'just now' };
       })
     );
-    addSystemLog(agentGenerated ? 'AGENT' : 'USR', `${agentGenerated ? 'AI generated' : 'Added'} checklist step on #${taskId}`);
+    addSystemLog(agentGenerated ? 'AGENT' : 'USR', agentGenerated ? 'AI added a suggested step' : 'Added a new step');
     return id;
   }, [addSystemLog]);
 
@@ -584,7 +609,7 @@ export function WorkspaceProvider({ children }) {
         return { ...t, checklists, subtaskCount: recalcSubtasks(checklists), updatedAt: 'just now' };
       })
     );
-    addSystemLog('USR', `Deleted checklist step on #${taskId}`);
+    addSystemLog('USR', 'Removed a step');
   }, [addSystemLog]);
 
   const addAcceptanceRow = useCallback((taskId, checkpoint, threshold) => {
@@ -599,7 +624,7 @@ export function WorkspaceProvider({ children }) {
       ],
       updatedAt: 'just now',
     }));
-    addSystemLog('USR', `Added acceptance criterion on #${taskId}`);
+    addSystemLog('USR', 'Added a success checkpoint');
     return id;
   }, [addSystemLog, patchTask]);
 
@@ -612,7 +637,7 @@ export function WorkspaceProvider({ children }) {
         const acceptanceCriteria = t.acceptanceCriteria.map((r) => {
           if (r.id !== rowId) return r;
           const next = ACCEPTANCE_CYCLE[(ACCEPTANCE_CYCLE.indexOf(r.status) + 1) % ACCEPTANCE_CYCLE.length];
-          addSystemLog('USR', `#${taskId} criterion "${r.checkpoint}" → ${next}`);
+          addSystemLog('USR', `Checkpoint "${r.checkpoint}" → ${next}`);
           return { ...r, status: next };
         });
         return { ...t, acceptanceCriteria };
@@ -623,35 +648,34 @@ export function WorkspaceProvider({ children }) {
   // Insert / toggle / update a technical code-snippet block on a task.
   const upsertCodeSnippet = useCallback((taskId, snippet) => {
     patchTask(taskId, (t) => ({ ...t, codeSnippet: snippet === null ? null : snippet, updatedAt: 'just now' }));
-    addSystemLog(snippet === null ? 'USR' : 'AGENT', `${snippet === null ? 'Removed' : 'Inserted'} code block on #${taskId}`);
+    addSystemLog(snippet === null ? 'USR' : 'AGENT', snippet === null ? 'Removed the attached snippet' : 'Attached a snippet to the task');
   }, [addSystemLog, patchTask]);
 
   const decomposeTaskWithAI = useCallback((taskId) => {
     if (!taskId) return;
-    addSystemLog('AGENT', `Decomposing #${taskId} into executable sub-steps...`);
+    addSystemLog('AGENT', 'AI is breaking this task into simple steps…');
     setTimeout(() => {
       setTasks((currentTasks) =>
         currentTasks.map((t) => {
           if (t.id !== taskId) return t;
-          const prefix = (t.id.split('-')[0] || 'ENG').toUpperCase();
-          const templates = DECOMPOSE_TEMPLATES[prefix] || DECOMPOSE_TEMPLATES.ENG;
+          const templates = DECOMPOSE_TEMPLATES[t.category] || DECOMPOSE_TEMPLATES.ENG;
           const newItems = templates.map((label) => ({
             id: nextChecklistId(), label, checked: false, indent: 0, agentGenerated: true,
           }));
           const checklists = [...t.checklists, ...newItems];
           const newCriterion = {
             id: nextCriteriaId(),
-            checkpoint: `Agent decomposition verified for "${t.title.slice(0, 40)}"`,
-            threshold: 'All ✦ AI steps closed or explicitly waived',
+            checkpoint: `Steps confirmed for "${t.title.slice(0, 40)}"`,
+            threshold: 'Every step done or skipped on purpose',
             status: 'Pending',
           };
-          addSystemLog('AGENT', `#${taskId}: +3 AI sub-tasks, +1 acceptance gate drafted`);
+          addSystemLog('AGENT', 'AI suggested 3 extra steps for this task');
           return {
             ...t,
             checklists,
             acceptanceCriteria: [...t.acceptanceCriteria, newCriterion],
             subtaskCount: recalcSubtasks(checklists),
-            agentSummary: `Decomposed into ${checklists.length} executable steps`,
+            agentSummary: `Broken into ${checklists.length} easy steps`,
             updatedAt: 'just now',
           };
         })
@@ -664,7 +688,7 @@ export function WorkspaceProvider({ children }) {
       currentTasks.map((t) => {
         if (t.id !== taskId) return t;
         const next = ASSIGNEE_POOL[(ASSIGNEE_POOL.indexOf(t.assignee) + 1) % ASSIGNEE_POOL.length];
-        addSystemLog('USR', `Reassigned #${taskId} → @${next}`);
+        addSystemLog('USR', `Reassigned to ${next}`);
         return { ...t, assignee: next, updatedAt: 'just now' };
       })
     );
@@ -683,9 +707,152 @@ export function WorkspaceProvider({ children }) {
         return { ...t, checklists, subtaskCount: recalcSubtasks(checklists), updatedAt: 'just now' };
       })
     );
-    addSystemLog('AGENT', `Executing custom composer prompt on #${taskId}: "${trimmed}"`);
+    addSystemLog('AGENT', `AI got to work on: "${trimmed}"`);
     triggerAgentOnTask(taskId);
   }, [addSystemLog, triggerAgentOnTask]);
+
+  // ---- Step 6: AI Diff & Merge Engine actions ------------------------------
+
+  const RISK_GATE = {
+    'Green (Autonomous)': { mergeable: true, label: 'AUTO-MERGE ALLOWED' },
+    'Amber (Soft Review)': { mergeable: true, label: 'SOFT REVIEW — MERGE OK' },
+    'Red (Strict Gate)': { mergeable: false, label: 'STRICT GATE — ADMIN APPROVAL REQUIRED' },
+  };
+
+  // Immutably patch a task's aiDeliverable.
+  const patchDeliverable = useCallback((taskId, updater) => {
+    setTasks((currentTasks) =>
+      currentTasks.map((t) =>
+        t.id === taskId ? { ...t, aiDeliverable: updater(t.aiDeliverable), updatedAt: 'just now' } : t
+      )
+    );
+  }, []);
+
+  const mergeAiDeliverable = useCallback((taskId) => {
+    const task = tasksRef.current.find((t) => t.id === taskId);
+    if (!task || !task.aiDeliverable) return;
+    const gate = RISK_GATE[task.aiDeliverable.riskTier];
+    if (gate && !gate.mergeable) {
+      addSystemLog('AGENT', 'This one needs an admin sign-off before it can be approved.');
+      return;
+    }
+    const mergedAt = formatTimestamp();
+    setTasks((currentTasks) =>
+      currentTasks.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              agentStatus: 'completed',
+              status: 'Done',
+              agentSummary: 'Approved — great job!',
+              aiDeliverable: { ...t.aiDeliverable, mergedAt },
+              checklists: t.checklists.map((c) => ({ ...c, checked: true })),
+              subtaskCount: { completed: t.checklists.length, total: t.checklists.length },
+              updatedAt: 'just now',
+            }
+          : t
+      )
+    );
+    addSystemLog('USR', `✓ Approved the AI work on "${(task.title || '').slice(0, 48)}"`);
+  }, [addSystemLog]);
+
+  const rejectAiDeliverable = useCallback((taskId) => {
+    const task = tasksRef.current.find((t) => t.id === taskId);
+    if (!task) return;
+    patchDeliverable(taskId, (d) => ({ ...d, mergedAt: null }));
+    setTasks((currentTasks) =>
+      currentTasks.map((t) =>
+        t.id === taskId
+          ? { ...t, agentStatus: 'idle', agentSummary: 'Not sent anywhere — try again whenever you like', updatedAt: 'just now' }
+          : t
+      )
+    );
+    addSystemLog('USR', 'AI draft set aside');
+  }, [addSystemLog, patchDeliverable]);
+
+  const requestChangesOnDeliverable = useCallback((taskId, note = '') => {
+    const task = tasksRef.current.find((t) => t.id === taskId);
+    if (!task) return;
+    setTasks((currentTasks) =>
+      currentTasks.map((t) =>
+        t.id === taskId
+          ? { ...t, agentStatus: 'running', agentSummary: 'AI is revising this for you…', updatedAt: 'just now' }
+          : t
+      )
+    );
+    addSystemLog('AGENT', note ? `AI is revising based on your feedback: "${note.slice(0, 60)}"` : 'AI is revising this for you…');
+    setTimeout(() => {
+      // Deliver a friendly revision after the thinking pause.
+      setTasks((currentTasks) => {
+        const target = currentTasks.find((t) => t.id === taskId);
+        if (!target || target.agentStatus !== 'running') return currentTasks;
+        addSystemLog('AGENT', `✨ Fresh version of "${(target.title || '').slice(0, 40)}" is ready to review`);
+        return currentTasks.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                agentStatus: 'diff-ready',
+                agentSummary: note
+                  ? `AI updated the draft using your note: "${note.slice(0, 48)}"`
+                  : 'AI prepared a fresh version for you',
+                updatedAt: 'just now',
+              }
+            : t
+        );
+      });
+    }, 1800);
+  }, [addSystemLog]);
+
+  // Regenerate: back to running, then produce a fresh diff-ready artifact.
+  const regenerateDeliverable = useCallback((taskId) => {
+    const task = tasksRef.current.find((t) => t.id === taskId);
+    if (!task) return;
+    setTasks((currentTasks) =>
+      currentTasks.map((t) =>
+        t.id === taskId
+          ? { ...t, agentStatus: 'running', agentSummary: 'AI is working on a new version…', updatedAt: 'just now' }
+          : t
+      )
+    );
+    addSystemLog('AGENT', 'AI is preparing a fresh version of this task');
+    setTimeout(() => {
+      setTasks((currentTasks) =>
+        currentTasks.map((t) => {
+          if (t.id !== taskId || t.agentStatus !== 'running') return t;
+          const d = t.aiDeliverable;
+          const bump = Math.min(99, (d.confidenceScore || 80) + 3);
+          return {
+            ...t,
+            agentStatus: 'diff-ready',
+            agentSummary: `${d.summary} (new version · looks good)`,
+            aiDeliverable: {
+              ...d,
+              confidenceScore: bump,
+              afterContent: [...d.afterContent, '', 'P.S. This version was polished with your latest feedback.'],
+              mergedAt: null,
+            },
+            updatedAt: 'just now',
+          };
+        })
+      );
+      addSystemLog('AGENT', 'The new version is ready for you to review');
+    }, 1800);
+  }, [addSystemLog]);
+
+  // Redesign — "Ask AI to Change…": store the user's plain-language feedback,
+  // revise the deliverable copy, and re-run the agent so a fresh draft lands
+  // back in the review panel automatically.
+  const askAiToChangeDeliverable = useCallback((taskId, note = '') => {
+    const trimmedNote = (note || '').trim();
+    patchDeliverable(taskId, (d) => ({
+      ...d,
+      revisionNote: trimmedNote || d.revisionNote || '',
+      afterContent: trimmedNote
+        ? [...d.afterContent, '', `✎ Revised with your note: "${trimmedNote}"`]
+        : d.afterContent,
+    }));
+    requestChangesOnDeliverable(taskId, trimmedNote);
+  }, [patchDeliverable, requestChangesOnDeliverable]);
 
   const value = useMemo(
     () => ({
@@ -727,7 +894,9 @@ export function WorkspaceProvider({ children }) {
       updateTaskPriority,
       updateTaskTitle,
       cycleFocusedTaskStatus,
+      cycleFocusedTaskPriority,
       triggerAgentOnTask,
+      askAiToChangeDeliverable,
       updateTaskMetadata,
       updateTaskObjective,
       toggleChecklistItem,
@@ -741,6 +910,10 @@ export function WorkspaceProvider({ children }) {
       decomposeTaskWithAI,
       cycleAssignee,
       runComposerPrompt,
+      mergeAiDeliverable,
+      rejectAiDeliverable,
+      requestChangesOnDeliverable,
+      regenerateDeliverable,
     }),
     [
       sidebarOpen,
@@ -781,7 +954,9 @@ export function WorkspaceProvider({ children }) {
       updateTaskPriority,
       updateTaskTitle,
       cycleFocusedTaskStatus,
+      cycleFocusedTaskPriority,
       triggerAgentOnTask,
+      askAiToChangeDeliverable,
       updateTaskMetadata,
       updateTaskObjective,
       toggleChecklistItem,
@@ -795,6 +970,10 @@ export function WorkspaceProvider({ children }) {
       decomposeTaskWithAI,
       cycleAssignee,
       runComposerPrompt,
+      mergeAiDeliverable,
+      rejectAiDeliverable,
+      requestChangesOnDeliverable,
+      regenerateDeliverable,
     ]
   );
 
